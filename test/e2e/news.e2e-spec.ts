@@ -167,4 +167,9 @@ describe("News API (e2e)", () => {
         });
     });
   });
+
+  // SSE 스트림 테스트는 supertest로 테스트하기 어려우므로
+  // unit 테스트(news-sse.service.spec.ts)에서 검증합니다.
+  // 실제 동작은 수동 테스트 또는 curl로 확인할 수 있습니다:
+  // curl -N http://localhost:3000/api/v1/news/stream
 });
