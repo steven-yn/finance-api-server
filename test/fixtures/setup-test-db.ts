@@ -1,3 +1,6 @@
+/**
+ * 테스트용 인메모리 SQLite 데이터베이스 설정
+ */
 import Database from "better-sqlite3";
 
 export interface NewsRow {
@@ -16,8 +19,8 @@ export interface NewsRow {
   notified_at?: string;
 }
 
-const CREATE_TABLE_SQL = `
-CREATE TABLE news (
+const CREATE_NEWS_TABLE = `
+CREATE TABLE IF NOT EXISTS news (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     news_id TEXT NOT NULL UNIQUE,
     hash TEXT NOT NULL,
@@ -32,29 +35,39 @@ CREATE TABLE news (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notified_at TIMESTAMP
 );
-
-CREATE INDEX idx_news_published_at ON news(published_at DESC);
-CREATE INDEX idx_news_source ON news(source);
-CREATE INDEX idx_news_category ON news(category);
-CREATE INDEX idx_news_created_at ON news(created_at DESC);
-CREATE INDEX idx_news_hash ON news(hash);
 `;
 
+const CREATE_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_news_hash ON news(hash);",
+  "CREATE INDEX IF NOT EXISTS idx_news_published_at ON news(published_at DESC);",
+  "CREATE INDEX IF NOT EXISTS idx_news_source ON news(source);",
+  "CREATE INDEX IF NOT EXISTS idx_news_category ON news(category);",
+  "CREATE INDEX IF NOT EXISTS idx_news_created_at ON news(created_at DESC);",
+];
+
+/**
+ * 테스트용 인메모리 SQLite DB 생성
+ * @param seedData 시드 데이터 (옵션)
+ * @returns Database.Database
+ */
 export function createTestDatabase(seedData?: NewsRow[]): Database.Database {
   const db = new Database(":memory:");
 
-  db.exec(CREATE_TABLE_SQL);
+  // 스키마 생성
+  db.exec(CREATE_NEWS_TABLE);
+  CREATE_INDEXES.forEach((indexSql) => db.exec(indexSql));
 
+  // 시드 데이터 삽입
   if (seedData && seedData.length > 0) {
-    const insert = db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO news (
         news_id, hash, headline, summary, url, source, category,
-        published_at, symbols, raw_data, notified_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        published_at, symbols, raw_data, created_at, notified_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const row of seedData) {
-      insert.run(
+      stmt.run(
         row.news_id,
         row.hash,
         row.headline,
@@ -65,6 +78,7 @@ export function createTestDatabase(seedData?: NewsRow[]): Database.Database {
         row.published_at,
         row.symbols ?? null,
         row.raw_data ?? null,
+        row.created_at ?? new Date().toISOString(),
         row.notified_at ?? null,
       );
     }
@@ -73,29 +87,26 @@ export function createTestDatabase(seedData?: NewsRow[]): Database.Database {
   return db;
 }
 
-export function createSampleNews(count: number = 10): NewsRow[] {
-  const news: NewsRow[] = [];
+/**
+ * 테스트용 시드 데이터 생성 헬퍼
+ */
+export function createMockNewsData(count: number): NewsRow[] {
   const sources = ["finnhub", "sec", "fred", "rss"];
-  const categories = ["general", "crypto", "forex", "merger"];
+  const categories = ["company-news", "general", "earnings", "markets"];
+  const now = new Date();
 
-  for (let i = 0; i < count; i++) {
-    const date = new Date();
-    date.setHours(date.getHours() - i);
-
-    news.push({
-      news_id: `test-${i}`,
-      hash: `hash-${i}`,
-      headline: `Test Headline ${i}`,
-      summary: `Test summary for news ${i}`,
-      url: `https://example.com/news/${i}`,
-      source: sources[i % sources.length],
-      category: categories[i % categories.length],
-      published_at: date.toISOString(),
-      symbols: i % 2 === 0 ? JSON.stringify(["BTC", "AAPL"]) : undefined,
-      raw_data: JSON.stringify({ test: true }),
-      notified_at: i % 3 === 0 ? date.toISOString() : undefined,
-    });
-  }
-
-  return news;
+  return Array.from({ length: count }, (_, i) => ({
+    news_id: `test-news-${i + 1}`,
+    hash: `hash-${i + 1}`,
+    headline: `Test Headline ${i + 1}`,
+    summary: `Test summary for news ${i + 1}`,
+    url: `https://example.com/news/${i + 1}`,
+    source: sources[i % sources.length],
+    category: categories[i % categories.length],
+    published_at: new Date(now.getTime() - i * 60 * 60 * 1000).toISOString(),
+    symbols: i % 2 === 0 ? '["AAPL","TSLA"]' : undefined,
+    raw_data: JSON.stringify({ test: true }),
+    created_at: new Date(now.getTime() - i * 60 * 60 * 1000).toISOString(),
+    notified_at: i % 3 === 0 ? new Date().toISOString() : undefined,
+  }));
 }

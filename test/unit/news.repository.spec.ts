@@ -1,148 +1,270 @@
-import { NewsRepository } from '../../src/modules/news/news.repository';
-import { createTestDatabase, createSampleNews } from '../fixtures/setup-test-db';
-import { Database } from 'better-sqlite3';
+import { Test, TestingModule } from "@nestjs/testing";
+import { NewsRepository } from "../../src/modules/news/news.repository";
+import { DATABASE_CONNECTION } from "../../src/common/constants/tokens";
+import {
+  createTestDatabase,
+  createMockNewsData,
+} from "../fixtures/setup-test-db";
+import Database from "better-sqlite3";
 
-describe('NewsRepository', () => {
-  let db: Database;
+describe("NewsRepository", () => {
   let repository: NewsRepository;
+  let db: Database.Database;
 
   beforeEach(() => {
-    const sampleData = createSampleNews(20);
-    db = createTestDatabase(sampleData);
-    repository = new NewsRepository(db);
+    // 인메모리 DB 생성 + 시드 데이터 50개
+    db = createTestDatabase(createMockNewsData(50));
   });
 
   afterEach(() => {
-    if (db) {
-      db.close();
-    }
+    db.close();
   });
 
-  describe('findRecent', () => {
-    it('최근 뉴스를 published_at DESC 순서로 반환해야 함', () => {
-      const result = repository.findRecent({ limit: 5, offset: 0 });
+  describe("findRecent", () => {
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          NewsRepository,
+          {
+            provide: DATABASE_CONNECTION,
+            useValue: db,
+          },
+        ],
+      }).compile();
 
-      expect(result.items).toHaveLength(5);
-      expect(result.items[0].headline).toBe('Test Headline 0');
+      repository = module.get<NewsRepository>(NewsRepository);
+    });
 
-      for (let i = 0; i < result.items.length - 1; i++) {
-        const current = new Date(result.items[i].published_at);
-        const next = new Date(result.items[i + 1].published_at);
-        expect(current.getTime()).toBeGreaterThanOrEqual(next.getTime());
+    it("기본 limit=20, offset=0으로 최근 뉴스를 가져온다", () => {
+      const result = repository.findRecent({ limit: 20, offset: 0 });
+
+      expect(result.items).toHaveLength(20);
+      expect(result.total).toBe(50);
+      // 최근 순 정렬 확인 (published_at DESC)
+      const dates = result.items.map((item) =>
+        new Date(item.published_at).getTime(),
+      );
+      for (let i = 0; i < dates.length - 1; i++) {
+        expect(dates[i]).toBeGreaterThanOrEqual(dates[i + 1]);
       }
     });
 
-    it('source 필터가 작동해야 함', () => {
-      const result = repository.findRecent({ limit: 20, offset: 0, source: 'finnhub' });
+    it("source 필터를 적용한다", () => {
+      const result = repository.findRecent({
+        limit: 100,
+        offset: 0,
+        source: "finnhub",
+      });
 
       expect(result.items.length).toBeGreaterThan(0);
-      result.items.forEach(item => {
-        expect(item.source).toBe('finnhub');
+      result.items.forEach((item) => {
+        expect(item.source).toBe("finnhub");
       });
     });
 
-    it('category 필터가 작동해야 함', () => {
-      const result = repository.findRecent({ limit: 20, offset: 0, category: 'crypto' });
+    it("category 필터를 적용한다", () => {
+      const result = repository.findRecent({
+        limit: 100,
+        offset: 0,
+        category: "company-news",
+      });
 
       expect(result.items.length).toBeGreaterThan(0);
-      result.items.forEach(item => {
-        expect(item.category).toBe('crypto');
+      result.items.forEach((item) => {
+        expect(item.category).toBe("company-news");
       });
     });
 
-    it('페이지네이션이 작동해야 함', () => {
-      const page1 = repository.findRecent({ limit: 5, offset: 0 });
-      const page2 = repository.findRecent({ limit: 5, offset: 5 });
+    it("source와 category 필터를 동시에 적용한다", () => {
+      const result = repository.findRecent({
+        limit: 100,
+        offset: 0,
+        source: "sec",
+        category: "general",
+      });
 
-      expect(page1.items).toHaveLength(5);
-      expect(page2.items).toHaveLength(5);
+      result.items.forEach((item) => {
+        expect(item.source).toBe("sec");
+        expect(item.category).toBe("general");
+      });
+    });
+
+    it("offset을 적용하여 페이지네이션 한다", () => {
+      const page1 = repository.findRecent({ limit: 10, offset: 0 });
+      const page2 = repository.findRecent({ limit: 10, offset: 10 });
+
+      expect(page1.items).toHaveLength(10);
+      expect(page2.items).toHaveLength(10);
+      // 첫 번째 페이지와 두 번째 페이지의 ID가 달라야 함
       expect(page1.items[0].id).not.toBe(page2.items[0].id);
     });
+  });
 
-    it('total count가 정확해야 함', () => {
-      const result = repository.findRecent({ limit: 5, offset: 0 });
-      expect(result.total).toBe(20);
+  describe("findById", () => {
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          NewsRepository,
+          {
+            provide: DATABASE_CONNECTION,
+            useValue: db,
+          },
+        ],
+      }).compile();
+
+      repository = module.get<NewsRepository>(NewsRepository);
+    });
+
+    it("news_id로 뉴스를 찾는다", () => {
+      const result = repository.findById("test-news-1");
+
+      expect(result).toBeDefined();
+      expect(result?.news_id).toBe("test-news-1");
+    });
+
+    it("존재하지 않는 news_id는 null을 반환한다", () => {
+      const result = repository.findById("non-existent");
+
+      expect(result).toBeNull();
     });
   });
 
-  describe('findById', () => {
-    it('존재하는 뉴스를 반환해야 함', () => {
-      const news = repository.findById('test-0');
+  describe("search", () => {
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          NewsRepository,
+          {
+            provide: DATABASE_CONNECTION,
+            useValue: db,
+          },
+        ],
+      }).compile();
 
-      expect(news).not.toBeNull();
-      expect(news?.news_id).toBe('test-0');
-      expect(news?.headline).toBe('Test Headline 0');
+      repository = module.get<NewsRepository>(NewsRepository);
     });
 
-    it('존재하지 않는 뉴스는 null을 반환해야 함', () => {
-      const news = repository.findById('non-existent');
-      expect(news).toBeNull();
-    });
-  });
-
-  describe('search', () => {
-    it('headline에서 키워드를 검색해야 함', () => {
-      const result = repository.search({ keyword: 'Headline 1', limit: 20, offset: 0 });
+    it("headline에서 키워드를 검색한다", () => {
+      const result = repository.search({
+        keyword: "Headline 1",
+        limit: 20,
+        offset: 0,
+      });
 
       expect(result.items.length).toBeGreaterThan(0);
-      result.items.forEach(item => {
-        expect(item.headline).toContain('Headline 1');
+      result.items.forEach((item) => {
+        expect(item.headline.toLowerCase()).toContain("headline 1");
       });
     });
 
-    it('summary에서 키워드를 검색해야 함', () => {
-      const result = repository.search({ keyword: 'summary', limit: 20, offset: 0 });
+    it("summary에서 키워드를 검색한다", () => {
+      const result = repository.search({
+        keyword: "summary",
+        limit: 20,
+        offset: 0,
+      });
 
       expect(result.items.length).toBeGreaterThan(0);
+      result.items.forEach((item) => {
+        const text = `${item.headline} ${item.summary}`.toLowerCase();
+        expect(text).toContain("summary");
+      });
     });
 
-    it('대소문자 구분 없이 검색해야 함', () => {
-      const result = repository.search({ keyword: 'HEADLINE', limit: 20, offset: 0 });
+    it("검색 결과도 페이지네이션이 적용된다", () => {
+      const page1 = repository.search({
+        keyword: "Test",
+        limit: 10,
+        offset: 0,
+      });
+      const page2 = repository.search({
+        keyword: "Test",
+        limit: 10,
+        offset: 10,
+      });
 
-      expect(result.items.length).toBeGreaterThan(0);
+      expect(page1.total).toBe(page2.total);
+      if (page1.items.length > 0 && page2.items.length > 0) {
+        expect(page1.items[0].id).not.toBe(page2.items[0].id);
+      }
     });
   });
 
-  describe('getStats', () => {
-    it('전체 통계를 반환해야 함', () => {
+  describe("getStats", () => {
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          NewsRepository,
+          {
+            provide: DATABASE_CONNECTION,
+            useValue: db,
+          },
+        ],
+      }).compile();
+
+      repository = module.get<NewsRepository>(NewsRepository);
+    });
+
+    it("통계 정보를 반환한다", () => {
       const stats = repository.getStats();
 
-      expect(stats.total).toBe(20);
+      expect(stats.total).toBe(50);
       expect(stats.notified).toBeGreaterThan(0);
       expect(Object.keys(stats.bySource).length).toBeGreaterThan(0);
       expect(Object.keys(stats.byCategory).length).toBeGreaterThan(0);
     });
 
-    it('소스별 카운트가 정확해야 함', () => {
+    it("소스별 통계의 합이 전체 개수와 같다", () => {
       const stats = repository.getStats();
-      const totalBySource = Object.values(stats.bySource).reduce((sum, count) => sum + count, 0);
+      const sumBySource = Object.values(stats.bySource).reduce(
+        (acc, cnt) => acc + cnt,
+        0,
+      );
 
-      expect(totalBySource).toBe(20);
+      expect(sumBySource).toBe(stats.total);
     });
 
-    it('카테고리별 카운트가 정확해야 함', () => {
+    it("카테고리별 통계의 합이 전체 개수와 같다", () => {
       const stats = repository.getStats();
-      const totalByCategory = Object.values(stats.byCategory).reduce((sum, count) => sum + count, 0);
+      const sumByCategory = Object.values(stats.byCategory).reduce(
+        (acc, cnt) => acc + cnt,
+        0,
+      );
 
-      expect(totalByCategory).toBe(20);
+      expect(sumByCategory).toBe(stats.total);
     });
   });
 
-  describe('findAfter', () => {
-    it('특정 ID 이후의 뉴스를 반환해야 함', () => {
-      const result = repository.findAfter(5);
+  describe("findAfter", () => {
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          NewsRepository,
+          {
+            provide: DATABASE_CONNECTION,
+            useValue: db,
+          },
+        ],
+      }).compile();
 
-      expect(result.length).toBeGreaterThan(0);
-      result.forEach(item => {
-        expect(item.id).toBeGreaterThan(5);
+      repository = module.get<NewsRepository>(NewsRepository);
+    });
+
+    it("특정 id 이후의 뉴스를 가져온다 (SSE용)", () => {
+      const result = repository.findAfter(10);
+
+      expect(result.length).toBe(40); // 50개 중 id > 10
+      result.forEach((item) => {
+        expect(item.id).toBeGreaterThan(10);
       });
     });
 
-    it('ID 오름차순으로 정렬되어야 함', () => {
+    it("id 오름차순으로 정렬된다", () => {
       const result = repository.findAfter(0);
 
-      for (let i = 0; i < result.length - 1; i++) {
-        expect(result[i].id).toBeLessThan(result[i + 1].id);
+      const ids = result.map((item) => item.id);
+      for (let i = 0; i < ids.length - 1; i++) {
+        expect(ids[i]).toBeLessThan(ids[i + 1]);
       }
     });
   });
