@@ -33,4 +33,7 @@ EOF
   exit 2
 fi
 
+# main 브랜치인 경우 최신 코드 pull
+git pull origin main > /dev/null 2>&1
+
 exit 0
