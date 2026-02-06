@@ -1,10 +1,13 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { INestApplication } from "@nestjs/common";
+import { INestApplication, ValidationPipe } from "@nestjs/common";
 import request from "supertest";
 import { AppModule } from "../../src/app.module";
 import { DATABASE_CONNECTION } from "../../src/common/constants/tokens";
 import { createTestDatabase } from "../fixtures/setup-test-db";
 import Database from "better-sqlite3";
+import { ApiExceptionFilter } from "../../src/common/filters/api-exception.filter";
+import { ResponseInterceptor } from "../../src/common/interceptors/response.interceptor";
+import { Reflector } from "@nestjs/core";
 
 describe("Health API (e2e)", () => {
   let app: INestApplication;
@@ -22,7 +25,18 @@ describe("Health API (e2e)", () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+
+    // 전역 설정 적용 (main.ts와 동일)
     app.setGlobalPrefix("api/v1");
+    app.useGlobalPipes(
+      new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
+    app.useGlobalFilters(new ApiExceptionFilter());
+    app.useGlobalInterceptors(new ResponseInterceptor(app.get(Reflector)));
 
     await app.init();
   });
