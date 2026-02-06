@@ -1,8 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Observable, timer } from "rxjs";
-import { switchMap, share, finalize, filter, map } from "rxjs/operators";
+import { switchMap, share, filter, map } from "rxjs/operators";
 import { NewsRepository } from "./news.repository";
-import { NewsDto } from "./dto/news.dto";
 
 export interface NewsEvent {
   id: number;
@@ -42,30 +41,40 @@ export class NewsSseService {
     source?: string,
     category?: string,
   ): Observable<{ data: string; id?: string; type?: string }> {
-    this.subscriberCount++;
-    this.logger.log(
-      `New SSE subscriber (total: ${this.subscriberCount}). Filters: source=${source ?? "none"}, category=${category ?? "none"}`,
-    );
+    return new Observable((subscriber) => {
+      this.subscriberCount++;
+      this.logger.log(
+        `New SSE subscriber (total: ${this.subscriberCount}). Filters: source=${source ?? "none"}, category=${category ?? "none"}`,
+      );
 
-    return this.newsStream$.pipe(
-      // 소스 필터링
-      filter((event) => !source || event.source === source),
-      // 카테고리 필터링
-      filter((event) => !category || event.category === category),
-      // SSE 메시지 포맷으로 변환
-      map((event) => ({
-        data: JSON.stringify(event),
-        id: String(event.id),
-        type: "news",
-      })),
-      // 구독 종료 시 카운터 감소
-      finalize(() => {
+      const sub = this.newsStream$
+        .pipe(
+          // 소스 필터링
+          filter((event) => !source || event.source === source),
+          // 카테고리 필터링
+          filter((event) => !category || event.category === category),
+          // SSE 메시지 포맷으로 변환
+          map((event) => ({
+            data: JSON.stringify(event),
+            id: String(event.id),
+            type: "news",
+          })),
+        )
+        .subscribe({
+          next: (v) => subscriber.next(v),
+          error: (e) => subscriber.error(e),
+          complete: () => subscriber.complete(),
+        });
+
+      // teardown: 구독 해제 시 자동 정리
+      return () => {
+        sub.unsubscribe();
         this.subscriberCount--;
         this.logger.log(
           `SSE subscriber disconnected (remaining: ${this.subscriberCount})`,
         );
-      }),
-    );
+      };
+    });
   }
 
   /**
@@ -80,15 +89,13 @@ export class NewsSseService {
         if (newArticles.length > 0) {
           this.logger.debug(`Found ${newArticles.length} new articles`);
 
+          // lastId를 한 번에 업데이트 (마지막 항목의 id가 가장 큼 - ORDER BY id ASC)
+          this.lastId = newArticles[newArticles.length - 1].id;
+
           // 각 새 기사를 이벤트로 방출
           newArticles.forEach((row) => {
             const event = this.rowToEvent(row);
             subscriber.next(event);
-
-            // lastId 업데이트
-            if (row.id > this.lastId) {
-              this.lastId = row.id;
-            }
           });
         }
 
@@ -98,6 +105,19 @@ export class NewsSseService {
         subscriber.error(error);
       }
     });
+  }
+
+  /**
+   * symbols JSON 문자열을 안전하게 파싱
+   */
+  private parseSymbols(raw: string | null | undefined): string[] | null {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch (error) {
+      this.logger.warn(`Invalid symbols JSON: ${raw}`);
+      return null;
+    }
   }
 
   /**
@@ -113,7 +133,7 @@ export class NewsSseService {
       source: row.source,
       category: row.category,
       publishedAt: row.published_at,
-      symbols: row.symbols ? JSON.parse(row.symbols) : null,
+      symbols: this.parseSymbols(row.symbols),
     };
   }
 

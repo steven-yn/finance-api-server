@@ -72,7 +72,6 @@ export class NewsController {
     @Query(ValidationPipe) query: NewsQueryDto,
     @Req() req: Request,
   ): Observable<{ data: string; id?: string; type?: string }> {
-    // req.on('close')로 클라이언트 연결 해제를 감지하여 구독 정리
     return new Observable((subscriber) => {
       const sub = this.newsSseService
         .subscribe(query.source, query.category)
@@ -85,6 +84,11 @@ export class NewsController {
         sub.unsubscribe();
         subscriber.complete();
       });
+
+      // teardown: 외부 구독 해제 시 내부도 정리
+      return () => {
+        sub.unsubscribe();
+      };
     });
   }
 
