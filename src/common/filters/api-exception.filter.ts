@@ -4,8 +4,8 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
-} from '@nestjs/common';
-import { Response } from 'express';
+} from "@nestjs/common";
+import { Response } from "express";
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
@@ -20,15 +20,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
       code: string;
     } = {
       success: false,
-      error: 'Internal server error',
-      code: 'INTERNAL_ERROR',
+      error: "Internal server error",
+      code: "INTERNAL_ERROR",
     };
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 
-      if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
+      if (typeof exceptionResponse === "object" && exceptionResponse !== null) {
         const responseObj = exceptionResponse as Record<string, any>;
 
         if (responseObj.code) {
@@ -37,18 +37,19 @@ export class ApiExceptionFilter implements ExceptionFilter {
           errorResponse = {
             success: false,
             error: Array.isArray(responseObj.message)
-              ? responseObj.message.join(', ')
+              ? responseObj.message.join(", ")
               : responseObj.message,
-            code: status === HttpStatus.BAD_REQUEST
-              ? 'VALIDATION_ERROR'
-              : 'HTTP_ERROR',
+            code:
+              status === HttpStatus.BAD_REQUEST
+                ? "VALIDATION_ERROR"
+                : "HTTP_ERROR",
           };
         }
       } else {
         errorResponse.error = String(exceptionResponse);
       }
     } else {
-      console.error('Unhandled exception:', exception);
+      console.error("Unhandled exception:", exception);
     }
 
     response.status(status).json(errorResponse);
