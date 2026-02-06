@@ -26,12 +26,12 @@ cat >&2 << 'EOF'
 
 ## Phase 3: 코드 리뷰 및 수정 (최대 2회 반복)
 
-6단계: /code-review 스킬을 실행하여 PR을 리뷰해주세요.
+6단계: PR 코드 리뷰를 수행하세요. 반드시 Task tool을 사용하여 model을 "opus"로 설정하고 subagent_type을 "pr-review-toolkit:code-reviewer"로 지정하세요. prompt에는 "현재 브랜치의 PR을 코드 리뷰해주세요. git diff main...HEAD로 변경사항을 확인하고, 버그, 보안 취약점, 코드 품질 이슈를 찾아주세요."라고 전달하세요.
 7단계: 리뷰에서 CRITICAL 또는 HIGH 이슈가 발견되면:
   - 해당 이슈를 수정하세요
   - Phase 1 (1~4단계)을 다시 실행하세요
   - 수정사항을 커밋하고 push 하세요
-  - /code-review 를 다시 실행하세요
+  - 6단계의 코드 리뷰를 다시 실행하세요 (동일하게 Task tool + model="opus" 사용)
   - 이 과정은 최대 2회까지만 반복하세요. 2회 후에도 이슈가 남아있으면 사용자에게 보고하고 다음 단계로 진행하세요.
 
 ## Phase 4: PR 머지 및 main 병합
