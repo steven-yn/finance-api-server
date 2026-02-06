@@ -1,17 +1,32 @@
-import { Controller, Get, Query, Param, ValidationPipe } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Query,
+  Param,
+  ValidationPipe,
+  Sse,
+  Req,
+} from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
+import { Request } from "express";
+import { Observable } from "rxjs";
 import { NewsService } from "./news.service";
+import { NewsSseService } from "./news-sse.service";
 import { NewsDto } from "./dto/news.dto";
 import {
   NewsQueryDto,
   NewsSearchDto,
   NewsStatsDto,
 } from "./dto/news-query.dto";
+import { SkipResponseWrap } from "../../common/decorators/skip-response-wrap.decorator";
 
 @ApiTags("news")
 @Controller("news")
 export class NewsController {
-  constructor(private readonly newsService: NewsService) {}
+  constructor(
+    private readonly newsService: NewsService,
+    private readonly newsSseService: NewsSseService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: "최근 뉴스 목록 조회" })
@@ -44,6 +59,33 @@ export class NewsController {
   })
   async getStats() {
     return this.newsService.getStats();
+  }
+
+  @Sse("stream")
+  @SkipResponseWrap()
+  @ApiOperation({ summary: "실시간 뉴스 스트림 (SSE)" })
+  @ApiResponse({
+    status: 200,
+    description: "Server-Sent Events 스트림",
+  })
+  stream(
+    @Query(ValidationPipe) query: NewsQueryDto,
+    @Req() req: Request,
+  ): Observable<{ data: string; id?: string; type?: string }> {
+    // req.on('close')로 클라이언트 연결 해제를 감지하여 구독 정리
+    return new Observable((subscriber) => {
+      const sub = this.newsSseService
+        .subscribe(query.source, query.category)
+        .subscribe({
+          next: (v) => subscriber.next(v),
+          error: (e) => subscriber.error(e),
+        });
+
+      req.on("close", () => {
+        sub.unsubscribe();
+        subscriber.complete();
+      });
+    });
   }
 
   @Get(":newsId")
