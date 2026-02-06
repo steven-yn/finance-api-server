@@ -3,11 +3,11 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
-} from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { SKIP_RESPONSE_WRAP } from '../decorators/skip-response-wrap.decorator';
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import { Observable } from "rxjs";
+import { map } from "rxjs/operators";
+import { SKIP_RESPONSE_WRAP } from "../decorators/skip-response-wrap.decorator";
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -20,9 +20,10 @@ export interface ApiResponse<T> {
 }
 
 @Injectable()
-export class ResponseInterceptor<T>
-  implements NestInterceptor<T, ApiResponse<T>>
-{
+export class ResponseInterceptor<T> implements NestInterceptor<
+  T,
+  ApiResponse<T>
+> {
   constructor(private readonly reflector: Reflector) {}
 
   intercept(
@@ -40,7 +41,7 @@ export class ResponseInterceptor<T>
 
     return next.handle().pipe(
       map((data) => {
-        if (data && typeof data === 'object' && 'items' in data) {
+        if (data && typeof data === "object" && "items" in data) {
           return {
             success: true,
             data: data.items,

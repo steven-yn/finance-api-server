@@ -1,6 +1,6 @@
-import { Injectable, Inject, OnModuleDestroy } from '@nestjs/common';
-import { Database } from 'better-sqlite3';
-import { DATABASE_CONNECTION } from '../common/constants/tokens';
+import { Injectable, Inject, OnModuleDestroy } from "@nestjs/common";
+import { Database } from "better-sqlite3";
+import { DATABASE_CONNECTION } from "../common/constants/tokens";
 
 @Injectable()
 export class DatabaseLifecycleService implements OnModuleDestroy {
